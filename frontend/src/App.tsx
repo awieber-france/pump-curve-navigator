@@ -75,6 +75,9 @@ function App() {
   // Wizard State
   const [isWizardOpen, setIsWizardOpen] = useState(false)
   const [wizardStep, setWizardStep] = useState(1)
+  const [wizardPos, setWizardPos] = useState({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [wizardData, setWizardData] = useState<WizardData>({
     headUnit: HEAD_UNITS[0],
     flowUnit: `${FLOW_VOL_UNITS[0]}/${FLOW_TIME_UNITS[0]}`,
@@ -148,6 +151,36 @@ function App() {
     setMode('view')
   }
 
+  const handleWizardMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true)
+    setDragOffset({
+      x: e.clientX - wizardPos.x,
+      y: e.clientY - wizardPos.y
+    })
+  }
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDragging) {
+        setWizardPos({
+          x: e.clientX - dragOffset.x,
+          y: e.clientY - dragOffset.y
+        })
+      }
+    }
+    const handleMouseUp = () => {
+      setIsDragging(false)
+    }
+    if (isDragging) {
+      window.addEventListener('mousemove', handleMouseMove)
+      window.addEventListener('mouseup', handleMouseUp)
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isDragging, dragOffset])
+
   const deleteCalibration = async (id: string) => {
     try {
       const res = await fetch(`${API_BASE}/calibrations/${id}`, { method: 'DELETE' })
@@ -162,6 +195,15 @@ function App() {
   useEffect(() => {
     fetchCalibrations()
   }, [])
+
+  useEffect(() => {
+    if (isWizardOpen && wizardPos.x === 0 && wizardPos.y === 0) {
+      setWizardPos({
+        x: window.innerWidth / 2 - 200, // approx half of max-w-md
+        y: window.innerHeight / 2 - 200
+      })
+    }
+  }, [isWizardOpen])
 
   // Modal State for Reference Value Entry
 
@@ -398,6 +440,12 @@ function App() {
     drawMarker(flowRef, '#3b82f6', 'Flow Ref')
     drawMarker(headRef, '#f59e0b', 'Head Ref')
     
+    if (isWizardOpen) {
+      drawMarker(wizardData.originPoint, '#ef4444', 'Origin (Temp)')
+      drawMarker(wizardData.flowRefPoint, '#3b82f6', 'Flow Ref (Temp)')
+      drawMarker(wizardData.headRefPoint, '#f59e0b', 'Head Ref (Temp)')
+    }
+
     analysisPoints.forEach((ap, index) => {
       drawMarker(ap.point, '#a855f7', `Point ${index + 1}`, 'red')
     })
@@ -405,13 +453,6 @@ function App() {
 
 
   // Modified useEffect to handle redraws because img.onload is asynchronous
-  useEffect(() => {
-    if (image && canvasRef.current) {
-        const img = new Image()
-        img.onload = () => draw(img)
-        img.src = image
-    }
-  }, [image, mode, origin, flowRef, headRef, analysisPoints])
 
   const viewModes: { id: Mode; label: string }[] = [
     { id: 'view', label: 'View' },
@@ -423,9 +464,15 @@ function App() {
     <div className="min-h-screen bg-zinc-900 text-zinc-100 font-sans">
       {/* Wizard Overlay */}
       {isWizardOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+        <div 
+          className="fixed z-50 pointer-events-none" 
+          style={{ left: wizardPos.x, top: wizardPos.y }}
+        >
           <div className="bg-zinc-800 border border-zinc-700 p-6 rounded-lg shadow-2xl w-full max-w-md space-y-6 pointer-events-auto">
-            <div className="flex justify-between items-center border-b border-zinc-700 pb-3">
+            <div 
+              className="flex justify-between items-center border-b border-zinc-700 pb-3 cursor-grab active:cursor-grabbing"
+              onMouseDown={handleWizardMouseDown}
+            >
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-mono text-blue-400 uppercase font-bold">Step {wizardStep} / 5</span>
                 <h3 className="text-sm font-mono uppercase text-zinc-300">Calibration Wizard</h3>
@@ -643,16 +690,16 @@ function App() {
 
       <main className="container mx-auto p-6 space-y-6">
         {/* Control Panel */}
-        <section className="bg-zinc-800 border border-zinc-700 rounded-lg p-6 shadow-sm">
+        <section className="bg-zinc-800 border border-zinc-700 rounded-lg p-6 py-10 shadow-sm">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="space-y-4 flex-1">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-4">
                  <div className="text-left">
                   <h2 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">Data Acquisition</h2>
                   <p className="text-xs text-zinc-500">Upload a pump performance curve image for analysis</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <label className="cursor-pointer bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors shadow-sm flex items-center gap-2">
+                  <label className="cursor-pointer bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors shadow-sm flex items-center gap-2 w-fit">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                     </svg>
@@ -671,9 +718,9 @@ function App() {
               </div>
 
               <div className="pt-4 border-t border-zinc-700">
-                <div className="flex justify-between items-center mb-3">
+                <div className="flex flex-col gap-3 mb-4">
                   <h2 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">Analysis & Calibration</h2>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 w-fit">
                     <button 
                       onClick={() => {
                         setWizardSnapshot({ ...wizardData })
@@ -692,28 +739,7 @@ function App() {
                     </button>
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {modes.map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => setMode(m.id)}
-                      className={`px-3 py-1.5 rounded text-xs font-mono transition-all ${
-                        mode === m.id 
-                        ? 'bg-blue-600 text-white shadow-inner ring-1 ring-blue-400' 
-                        : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
-                      }`}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
-                </div>
                 <div className="flex flex-wrap gap-6 mt-4 text-xs font-mono">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-zinc-500 uppercase text-[10px]">Origin Point</span>
-                    <span className={origin ? 'text-white' : 'text-red-500'}>
-                      {origin ? `${origin.x.toFixed(0)}, ${origin.y.toFixed(0)}` : 'None'}
-                    </span>
-                  </div>
                   <div className="flex flex-col gap-1">
                     <span className="text-zinc-500 uppercase text-[10px]">Origin Flow</span>
                     <span className="text-white">
@@ -785,45 +811,29 @@ function App() {
                     )}
                   </div>
                 </div>
+                <div className="pt-4 border-t border-zinc-700">
+                  <h2 className="text-sm font-medium text-zinc-400 uppercase tracking-wider mb-3">Data Sampling</h2>
+                  <div className="flex flex-wrap gap-2">
+                    {modes.map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={() => setMode(m.id)}
+                        className={`px-3 py-1.5 rounded text-xs font-mono transition-all ${
+                          mode === m.id 
+                          ? 'bg-blue-600 text-white shadow-inner ring-1 ring-blue-400' 
+                          : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
+                        }`}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* Result Panel */}
-        {analysisPoints.length > 0 && (
-          <section className="bg-blue-900/20 border border-blue-800 rounded-lg p-4 shadow-sm">
-            <div className="flex items-center justify-between mb-3 pb-2 border-b border-blue-800/50">
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                <span className="text-xs font-mono text-blue-300 uppercase">Analysis Results</span>
-              </div>
-              <button 
-                onClick={() => setAnalysisPoints([])}
-                className="text-[10px] uppercase font-bold text-blue-400 hover:text-blue-300 transition-colors px-2 py-1 rounded border border-blue-800/50 hover:bg-blue-800/30"
-              >
-                Clear All
-              </button>
-            </div>
-            <div className="max-h-[320px] overflow-y-auto space-y-2 pr-2">
-              {analysisPoints.map((ap, index) => (
-                <div key={index} className="flex items-center justify-between bg-blue-900/30 p-3 rounded border border-blue-800/30">
-                  <span className="text-xs font-mono text-blue-400 uppercase">Point {index + 1}</span>
-                  <div className="flex gap-8">
-                    <div className="flex flex-col items-end">
-                      <span className="text-[10px] text-blue-500 uppercase font-mono">Flow Rate</span>
-                      <span className="text-lg font-mono font-bold text-white">{ap.result.flow.toFixed(2)}</span>
-                    </div>
-                    <div className="flex flex-col items-end">
-                      <span className="text-[10px] text-blue-500 uppercase font-mono">Head</span>
-                      <span className="text-lg font-mono font-bold text-white">{ap.result.head.toFixed(2)}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
 
         {/* Display Area */}
         <section className="grid grid-cols-1 gap-6">
@@ -879,6 +889,44 @@ function App() {
               )}
             </div>
           </div>
+          {analysisPoints.length > 0 && (
+            <div className="bg-zinc-800 border border-zinc-700 rounded-lg overflow-hidden shadow-sm mt-6">
+              <div className="bg-zinc-700/50 px-4 py-2 border-b border-zinc-700 flex justify-between items-center">
+                <span className="text-xs font-mono text-zinc-300 flex items-center gap-2">
+                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                  ANALYSIS RESULTS
+                </span>
+                <button 
+                  onClick={() => setAnalysisPoints([])} 
+                  className="text-[10px] uppercase font-bold text-zinc-400 hover:text-red-400 transition-colors"
+                >
+                  Clear All
+                </button>
+              </div>
+              <div className="max-h-[200px] overflow-y-auto">
+                <table className="w-full text-left text-xs font-mono">
+                  <thead className="bg-zinc-900/50 text-zinc-500 uppercase sticky top-0">
+                    <tr>
+                      <th className="px-4 py-2 border-b border-zinc-700">Point</th>
+                      <th className="px-4 py-2 border-b border-zinc-700">Flow</th>
+                      <th className="px-4 py-2 border-b border-zinc-700">Head</th>
+                      <th className="px-4 py-2 border-b border-zinc-700">Coords</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {analysisPoints.map((ap, i) => (
+                      <tr key={i} className="border-b border-zinc-700/50 hover:bg-zinc-700/30 transition-colors">
+                        <td className="px-4 py-2 text-zinc-400">{i + 1}</td>
+                        <td className="px-4 py-2 text-white font-bold">{ap.result.flow.toFixed(2)} {flowRef?.unit || '-'}</td>
+                        <td className="px-4 py-2 text-white font-bold">{ap.result.head.toFixed(2)} {headRef?.unit || '-'}</td>
+                        <td className="px-4 py-2 text-zinc-500">{ap.point.x.toFixed(0)}, {ap.point.y.toFixed(0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </section>
       </main>
     </div>
